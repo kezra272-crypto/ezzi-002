@@ -1,0 +1,531 @@
+<?php
+
+// PRODUCT BARCODE / PRICE SYSTEM - SINGLE PAGE
+
+
+//DATABASE CONNECTION
+$host = "localhost";
+$user = "root";
+$password = "";
+$database = "product_system";
+
+$conn = new mysqli($host, $user, $password, $database);
+
+if ($conn->connect_error) {
+    die("Database connection failed: " . $conn->connect_error);
+}
+
+
+ //CREATE DATABASE TABLE AUTOMATICALLY
+
+
+$conn->query("
+CREATE TABLE IF NOT EXISTS products (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_code VARCHAR(100) NOT NULL UNIQUE,
+    product_name VARCHAR(150) NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    quantity INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+");
+
+
+ //ADD PRODUCT
+
+
+$message = "";
+
+if (isset($_POST['add_product'])) {
+
+    $code = trim($_POST['product_code']);
+    $name = trim($_POST['product_name']);
+    $price = $_POST['price'];
+    $quantity = $_POST['quantity'];
+
+    if ($code == "" || $name == "" || $price == "") {
+
+        $message = "Please fill in all required fields.";
+
+    } else {
+
+        $stmt = $conn->prepare("
+            INSERT INTO products
+            (product_code, product_name, price, quantity)
+            VALUES (?, ?, ?, ?)
+        ");
+
+        $stmt->bind_param(
+            "ssdi",
+            $code,
+            $name,
+            $price,
+            $quantity
+        );
+
+        if ($stmt->execute()) {
+
+            $message = "Product added successfully!";
+
+        } else {
+
+            if ($stmt->errno == 1062) {
+                $message = "This product code already exists.";
+            } else {
+                $message = "Error adding product.";
+            }
+        }
+
+        $stmt->close();
+    }
+}
+
+
+ //SEARCH PRODUCT
+
+
+$product = null;
+
+if (isset($_POST['search_product'])) {
+
+    $code = trim($_POST['search_code']);
+
+    $stmt = $conn->prepare("
+        SELECT * FROM products
+        WHERE product_code = ?
+    ");
+
+    $stmt->bind_param("s", $code);
+    $stmt->execute();
+
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+
+        $product = $result->fetch_assoc();
+
+    } else {
+
+        $message = "Product not found.";
+
+    }
+
+    $stmt->close();
+}
+
+// GET ALL PRODUCTS 
+
+$products = $conn->query("
+    SELECT * FROM products
+    ORDER BY id DESC
+");
+
+?>
+
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Product Price Scanner</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f2f4f7;
+    color: #333;
+}
+
+header {
+    background: #1f4e78;
+    color: white;
+    padding: 20px;
+    text-align: center;
+}
+
+header h1 {
+    margin: 0;
+}
+
+.container {
+    width: 95%;
+    max-width: 1100px;
+    margin: 30px auto;
+}
+
+.card {
+    background: white;
+    padding: 25px;
+    margin-bottom: 25px;
+    border-radius: 10px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+}
+
+.card h2 {
+    margin-top: 0;
+    color: #1f4e78;
+}
+
+input {
+    width: 100%;
+    padding: 12px;
+    margin: 7px 0 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 16px;
+}
+
+button {
+    background: #1f4e78;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+button:hover {
+    background: #163a5c;
+}
+
+.search-box {
+    display: flex;
+    gap: 10px;
+}
+
+.search-box input {
+    flex: 1;
+}
+
+.search-box button {
+    height: 47px;
+}
+
+.message {
+    background: #e8f4ff;
+    border-left: 5px solid #1f4e78;
+    padding: 12px;
+    margin-bottom: 20px;
+}
+
+.product-result {
+    background: #eaf8ed;
+    border: 2px solid #28a745;
+    padding: 20px;
+    margin-top: 20px;
+    border-radius: 8px;
+}
+
+.product-result h3 {
+    margin-top: 0;
+    color: #198754;
+}
+
+.price {
+    font-size: 30px;
+    font-weight: bold;
+    color: #198754;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+table th,
+table td {
+    padding: 12px;
+    border: 1px solid #ddd;
+    text-align: left;
+}
+
+table th {
+    background: #1f4e78;
+    color: white;
+}
+
+table tr:nth-child(even) {
+    background: #f5f5f5;
+}
+
+@media(max-width: 600px) {
+
+    .search-box {
+        display: block;
+    }
+
+    .search-box button {
+        width: 100%;
+    }
+
+    table {
+        font-size: 13px;
+    }
+}
+
+</style>
+
+</head>
+
+<body>
+
+
+<header>
+
+<h1>🛒 Product Price Scanner</h1>
+
+<p>Scan a product barcode to find its price</p>
+
+</header>
+
+
+<div class="container">
+
+
+<!-- ==================================================
+     MESSAGE
+================================================== -->
+
+<?php if ($message != ""): ?>
+
+<div class="message">
+
+<?php echo htmlspecialchars($message); ?>
+
+</div>
+
+<?php endif; ?>
+
+
+<!-- ==================================================
+     BARCODE SEARCH
+================================================== -->
+
+<div class="card">
+
+<h2>🔎 Scan / Search Product</h2>
+
+<form method="POST" id="searchForm">
+
+<div class="search-box">
+
+<input
+    type="text"
+    name="search_code"
+    id="searchCode"
+    placeholder="Scan or enter product code"
+    autofocus
+    required
+>
+
+<button type="submit" name="search_product">
+    Search
+</button>
+
+</div>
+
+</form>
+
+
+<?php if ($product): ?>
+
+<div class="product-result">
+
+<h3>
+<?php echo htmlspecialchars($product['product_name']); ?>
+</h3>
+
+<p>
+<strong>Product Code:</strong>
+<?php echo htmlspecialchars($product['product_code']); ?>
+</p>
+
+<p class="price">
+KSh <?php echo number_format($product['price'], 2); ?>
+</p>
+
+<p>
+<strong>Available Stock:</strong>
+<?php echo $product['quantity']; ?>
+</p>
+
+</div>
+
+<?php endif; ?>
+
+</div>
+
+
+
+    // ADD PRODUCT
+
+
+<div class="card">
+
+<h2>➕ Add New Product</h2>
+
+<form method="POST">
+
+<label>Product Code / Barcode</label>
+
+<input
+    type="text"
+    name="product_code"
+    placeholder="Example: 8901234567890"
+    required
+>
+
+
+<label>Product Name</label>
+
+<input
+    type="text"
+    name="product_name"
+    placeholder="Example: Coca Cola 500ml"
+    required
+>
+
+
+<label>Price (KSh)</label>
+
+<input
+    type="number"
+    name="price"
+    step="0.01"
+    placeholder="Example: 80"
+    required
+>
+
+
+<label>Quantity / Stock</label>
+
+<input
+    type="number"
+    name="quantity"
+    placeholder="Example: 50"
+    value="0"
+>
+
+
+<button type="submit" name="add_product">
+
+Add Product
+
+</button>
+
+</form>
+
+</div>
+
+
+//  PRODUCT LIST
+
+
+<div class="card">
+
+<h2>📦 Products</h2>
+
+<table>
+
+<tr>
+
+<th>#</th>
+<th>Product Code</th>
+<th>Product Name</th>
+<th>Price</th>
+<th>Stock</th>
+
+</tr>
+
+
+<?php if ($products->num_rows > 0): ?>
+
+<?php while ($row = $products->fetch_assoc()): ?>
+
+<tr>
+
+<td>
+<?php echo $row['id']; ?>
+</td>
+
+<td>
+<?php echo htmlspecialchars($row['product_code']); ?>
+</td>
+
+<td>
+<?php echo htmlspecialchars($row['product_name']); ?>
+</td>
+
+<td>
+KSh <?php echo number_format($row['price'], 2); ?>
+</td>
+
+<td>
+<?php echo $row['quantity']; ?>
+</td>
+
+</tr>
+
+<?php endwhile; ?>
+
+<?php else: ?>
+
+<tr>
+
+<td colspan="5">
+No products registered yet.
+</td>
+
+</tr>
+
+<?php endif; ?>
+
+</table>
+
+</div>
+
+
+</div>
+
+
+<script>
+
+
+// BARCODE SCANNER
+
+
+// Most USB barcode scanners behave like a keyboard.
+// When the scanner finishes entering the code,
+// it normally sends the ENTER key.
+
+document.getElementById("searchCode")
+.addEventListener("keydown", function(event) {
+
+    if (event.key === "Enter") {
+
+        event.preventDefault();
+
+        document.getElementById("searchForm").submit();
+
+    }
+
+});
+
+</script>
+
+
+</body>
+
+</html>
